@@ -1,0 +1,118 @@
+# Example: Sonoff RF Bridge v2 with direct-hack mod, controlling A-OK blinds.
+#
+# Place this file alongside the `components/` directory. The directory layout
+# should look like:
+#
+#   my-esphome-config/
+#   ├── blinds.yaml         <-- this file
+#   └── components/
+#       └── aok/
+#           ├── __init__.py
+#           ├── aok.h / aok.cpp
+#           ├── cover.py / cover.h / cover.cpp
+#           └── button.py / aok_button.h
+
+esphome:
+  name: blinds-bridge
+
+esp8266:
+  board: esp8285
+
+logger:
+  level: DEBUG       # turn down to INFO once everything works
+api:
+ota:
+  - platform: esphome
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+# Tell ESPHome where to find the component.
+external_components:
+  - source:
+      type: local
+      path: components
+
+# The actual 433 MHz transmitter on the RF Bridge.
+# Try GPIO5 first; if no response, swap to GPIO4 -- some board revisions
+# have the markings swapped relative to the actual ESP pins.
+remote_transmitter:
+  id: tx
+  pin: GPIO5
+  carrier_duty_percent: 100%
+
+# The A-OK hub: one per "virtual remote" you want to emulate.
+# remote_id is a 24-bit value you make up. Once you've paired a motor to
+# this ID, never change it (or you'll have to re-pair every blind).
+aok:
+  id: aok_hub
+  transmitter_id: tx
+  remote_id: 0x8A3F71
+  repeats: 8         # original remotes send 8-10 repeats; default is 8
+
+# One cover per blind. Channel is 1..16 (the component converts to the
+# 16-bit bitmask the motor expects).
+cover:
+  - platform: aok
+    name: "Blind 1 - Bedroom"
+    id: blind_1
+    channel: 1
+    travel_time: 25s    # roughly how long full open->close takes
+
+  - platform: aok
+    name: "Blind 2 - Kitchen"
+    id: blind_2
+    channel: 2
+    travel_time: 25s
+
+  - platform: aok
+    name: "Blind 3 - Living Room A"
+    id: blind_3
+    channel: 3
+    travel_time: 25s
+
+  - platform: aok
+    name: "Blind 4 - Living Room B"
+    id: blind_4
+    channel: 4
+    travel_time: 25s
+
+  - platform: aok
+    name: "Blind 5 - Office"
+    id: blind_5
+    channel: 5
+    travel_time: 25s
+
+  - platform: aok
+    name: "Blind 6 - Bathroom"
+    id: blind_6
+    channel: 6
+    travel_time: 25s
+
+  - platform: aok
+    name: "Blind 7 - Hallway"
+    id: blind_7
+    channel: 7
+    travel_time: 25s
+
+# Pairing buttons. To pair a blind:
+#   1. Hold the PROG button on the motor head until the motor jogs.
+#   2. Within ~10 seconds, press the matching "Pair" button in HA.
+#   3. Motor jogs again to confirm pairing.
+button:
+  - platform: aok
+    name: "Pair Blind 1"
+    cover_id: blind_1
+    action: pair
+  - platform: aok
+    name: "Pair Blind 2"
+    cover_id: blind_2
+    action: pair
+  # ... add one per blind ...
+
+  # Reverse a blind's direction if up/down are swapped after pairing:
+  - platform: aok
+    name: "Reverse Blind 1"
+    cover_id: blind_1
+    action: change_direction
+    entity_category: config
