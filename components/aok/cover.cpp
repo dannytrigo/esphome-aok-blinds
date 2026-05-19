@@ -72,6 +72,12 @@ void AOKCover::control(const cover::CoverCall &call) {
       this->send_up();
     } else if (target < this->position) {
       this->send_down();
+    } else {
+        if (target == 0.0f) {
+          this->send_down();
+        } else if (target == 1.0f) {
+            this->send_up();
+        }
     }
     // Note: we have no way to stop the motor at an intermediate position
     // other than firing a STOP at the right moment based on travel_time.
