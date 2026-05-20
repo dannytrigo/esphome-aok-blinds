@@ -57,8 +57,9 @@ works.
 2. See `blinds.yaml` for a complete example.
 3. Flash, then for each blind:
    - Hold the PROG button on the motor head until the motor jogs.
-   - Within 10 s, press the matching "Pair" button in HA.
+   - Within 10 s, press the matching "Program" button in HA.
    - Motor jogs to confirm.
+   - Use the cover's **Up** button to complete the pairing handshake.
 
 If a blind's UP/DOWN are reversed after pairing, press its "Reverse"
 button once.
@@ -81,8 +82,11 @@ Each entry under `blinds:` automatically creates three Home Assistant
 entities for that blind:
 
 - A **Cover** entity with the given name (open, close, stop, position).
-- A **Button** entity named `{name} Pair` for pairing the motor.
+- A **Button** entity named `{name} Program` for sending the PROGRAM (0x53) command.
 - A **Button** entity named `{name} Reverse` for reversing the motor direction.
+
+To pair a motor: hold its PROG button until it jogs, press **Program** in HA,
+then press **Up** on the cover to confirm.
 
 ```yaml
 aok:
@@ -100,7 +104,7 @@ aok:
 
 | Key           | Type        | Default | Description |
 |---------------|-------------|---------|-------------|
-| `name`        | string      | —       | HA entity name (also used as prefix for the Pair/Reverse buttons) |
+| `name`        | string      | —       | HA entity name (also used as prefix for the Program/Reverse buttons) |
 | `channel`     | int 1-16    | —       | Channel number |
 | `travel_time` | duration    | 30 s    | Estimated full open-to-close time |
 | `after_delay` | duration    | 250 ms  | Delay before AFTER (0x24) packet |
@@ -131,9 +135,9 @@ cover:
 
 button:
   - platform: aok
-    name: "Pair Bedroom"
+    name: "Program Bedroom"
     cover_id: blind_bedroom
-    action: pair
+    action: program
 
   - platform: aok
     name: "Reverse Bedroom"
@@ -156,11 +160,11 @@ button:
 
 #### `button:` platform `aok`
 
-| Key        | Type                         | Description |
-|------------|------------------------------|-------------|
-| `name`     | string                       | HA entity name |
-| `cover_id` | ID                           | Which cover to act on |
-| `action`   | `pair` \| `change_direction` | What to send |
+| Key        | Type                          | Description |
+|------------|-------------------------------|-------------|
+| `name`     | string                        | HA entity name |
+| `cover_id` | ID                            | Which cover to act on |
+| `action`   | `program` \| `change_direction` | What to send |
 
 ## Caveats
 
