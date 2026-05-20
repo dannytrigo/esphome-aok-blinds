@@ -1,4 +1,4 @@
-"""Button platform for A-OK: pairing and change-direction helpers."""
+"""Button platform for A-OK: program and change-direction helpers."""
 
 import esphome.codegen as cg
 import esphome.config_validation as cv
@@ -17,7 +17,7 @@ AOKButton = aok_ns.class_("AOKButton", button.Button, cg.Component)
 AOKButtonAction = aok_ns.enum("AOKButtonAction")
 
 ACTIONS = {
-    "pair": AOKButtonAction.AOK_BUTTON_PAIR,
+    "program": AOKButtonAction.AOK_BUTTON_PROGRAM,
     "change_direction": AOKButtonAction.AOK_BUTTON_CHANGE_DIR,
 }
 

@@ -39,7 +39,7 @@ CONF_TRAVEL_TIME = "travel_time"
 CONF_AFTER_DELAY = "after_delay"
 CONF_SEND_AFTER = "send_after"
 CONF_INVERTED = "inverted"
-CONF_PAIR_BUTTON_ID = "pair_button_id"
+CONF_PROGRAM_BUTTON_ID = "program_button_id"
 CONF_DIR_BUTTON_ID = "dir_button_id"
 
 # ---------------------------------------------------------------------------
@@ -49,7 +49,7 @@ CONF_DIR_BUTTON_ID = "dir_button_id"
 # ---------------------------------------------------------------------------
 BLIND_SCHEMA = cover_component.cover_schema(AOKCover).extend(
     {
-        cv.GenerateID(CONF_PAIR_BUTTON_ID): cv.declare_id(AOKButton),
+        cv.GenerateID(CONF_PROGRAM_BUTTON_ID): cv.declare_id(AOKButton),
         cv.GenerateID(CONF_DIR_BUTTON_ID): cv.declare_id(AOKButton),
         cv.Required(CONF_CHANNEL): cv.int_range(min=1, max=16),
         cv.Optional(CONF_TRAVEL_TIME, default="30s"): cv.positive_time_period_milliseconds,
@@ -99,19 +99,19 @@ async def to_code(config):
         cg.add(cov.set_inverted(blind[CONF_INVERTED]))
 
         # ------------------------------------------------------------------ #
-        # Pair button  ("{name} Pair")                                         #
+        # Program button  ("{name} Program")                                  #
         # ------------------------------------------------------------------ #
-        pair_btn = cg.new_Pvariable(blind[CONF_PAIR_BUTTON_ID])
-        await cg.register_component(pair_btn, {})
+        prog_btn = cg.new_Pvariable(blind[CONF_PROGRAM_BUTTON_ID])
+        await cg.register_component(prog_btn, {})
         await button_component.register_button(
-            pair_btn,
+            prog_btn,
             {
-                CONF_ID: blind[CONF_PAIR_BUTTON_ID],
-                CONF_NAME: f"{blind[CONF_NAME]} Pair",
+                CONF_ID: blind[CONF_PROGRAM_BUTTON_ID],
+                CONF_NAME: f"{blind[CONF_NAME]} Program",
             },
         )
-        cg.add(pair_btn.set_cover(cov))
-        cg.add(pair_btn.set_action(AOKButtonAction.AOK_BUTTON_PAIR))
+        cg.add(prog_btn.set_cover(cov))
+        cg.add(prog_btn.set_action(AOKButtonAction.AOK_BUTTON_PROGRAM))
 
         # ------------------------------------------------------------------ #
         # Reverse button  ("{name} Reverse")                                   #
