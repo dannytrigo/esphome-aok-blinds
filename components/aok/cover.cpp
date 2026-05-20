@@ -43,6 +43,13 @@ void AOKCover::loop() {
     float delta = (this->last_operation_ == cover::COVER_OPERATION_OPENING) ? elapsed : -elapsed;
     float new_pos = clamp(this->position_at_op_start_ + delta, 0.0f, 1.0f);
     if (new_pos != this->position) {
+      if (this->stop_pending_ &&
+          ((new_pos >= this->stop_position_ && this->last_operation_ == cover::COVER_OPERATION_OPENING) ||
+           (new_pos <= this->stop_position_ && this->last_operation_ == cover::COVER_OPERATION_CLOSING))) {
+        // Auto stop at target
+        this->send_stop();
+        this->stop_pending_ = false;
+      }
       this->position = new_pos;
       this->publish_state();
     }
@@ -62,6 +69,7 @@ void AOKCover::loop() {
 }
 
 void AOKCover::control(const cover::CoverCall &call) {
+  this->stop_pending_ = false;
   if (call.get_stop()) {
     this->send_stop();
     return;
@@ -70,8 +78,16 @@ void AOKCover::control(const cover::CoverCall &call) {
     float target = *call.get_position();
     if (target > this->position) {
       this->send_up();
+      if (target < 1.0f) {
+        this->stop_pending_ = true;
+        this->stop_position_ = target;
+      }
     } else if (target < this->position) {
       this->send_down();
+      if (target > 0.0f) {
+        this->stop_pending_ = true;
+        this->stop_position_ = target;
+      }
     } else {
         if (target == 0.0f) {
           this->send_down();

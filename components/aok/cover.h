@@ -45,6 +45,10 @@ class AOKCover : public cover::Cover, public Component {
   bool after_pending_{false};
   uint32_t after_due_at_{0};
 
+  // Stop at target
+  bool stop_pending_{false};
+  float stop_position_{0.0f};
+
   // Position estimation (optional but nice to have).
   cover::CoverOperation last_operation_{cover::COVER_OPERATION_IDLE};
   uint32_t operation_started_at_{0};
