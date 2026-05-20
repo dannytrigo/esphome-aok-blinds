@@ -7,19 +7,6 @@ This works as a **virtual remote**: you make up a 24-bit remote ID, pair each
 motor to it, and ESPHome can then drive all your blinds without ever needing
 to clone or capture a physical remote.
 
-## Why this exists
-
-A-OK motors use a tri-state OOK protocol on 433.92 MHz that:
-
-- Sonoff RF Bridge stock firmware can't capture cleanly (Portisch sniffing
-  doesn't yield consistent codes for these remotes).
-- ESPHome's built-in protocols don't match (it's not Dooya, not RC-Switch).
-- Naive raw-replay tends to drift just enough on the ~270/565 µs pulse
-  widths that the motor's bit-slicer rejects the replay.
-
-Generating the waveform from scratch with the correct ID, channel bitmask,
-and checksum is much more reliable than capture-and-replay.
-
 ## Protocol
 
 Frame is 65 bits, MSB first:
