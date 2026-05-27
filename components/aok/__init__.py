@@ -10,7 +10,8 @@ import esphome.config_validation as cv
 from esphome.components import remote_transmitter
 from esphome.components import cover as cover_component
 from esphome.components import button as button_component
-from esphome.const import CONF_ID, CONF_CHANNEL, CONF_NAME
+from esphome.const import CONF_ID, CONF_CHANNEL, CONF_NAME, CONF_DISABLED_BY_DEFAULT, ENTITY_CATEGORY_DIAGNOSTIC, \
+    CONF_ENTITY_CATEGORY
 
 CODEOWNERS = ["@you"]
 DEPENDENCIES = ["remote_transmitter"]
@@ -108,6 +109,8 @@ async def to_code(config):
             {
                 CONF_ID: blind[CONF_PROGRAM_BUTTON_ID],
                 CONF_NAME: f"{blind[CONF_NAME]} Program",
+                CONF_DISABLED_BY_DEFAULT: False,
+                CONF_ENTITY_CATEGORY: ENTITY_CATEGORY_DIAGNOSTIC,
             },
         )
         cg.add(prog_btn.set_cover(cov))
@@ -123,6 +126,8 @@ async def to_code(config):
             {
                 CONF_ID: blind[CONF_DIR_BUTTON_ID],
                 CONF_NAME: f"{blind[CONF_NAME]} Reverse",
+                CONF_DISABLED_BY_DEFAULT: False,
+                CONF_ENTITY_CATEGORY: ENTITY_CATEGORY_DIAGNOSTIC,
             },
         )
         cg.add(dir_btn.set_cover(cov))
