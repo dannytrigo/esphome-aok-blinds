@@ -44,75 +44,41 @@ remote_transmitter:
 # The A-OK hub: one per "virtual remote" you want to emulate.
 # remote_id is a 24-bit value you make up. Once you've paired a motor to
 # this ID, never change it (or you'll have to re-pair every blind).
+#
+# Each entry under `blinds:` automatically creates:
+#   - a Cover entity  (name as given)
+#   - a Button entity "{name} Pair"     (for pairing the motor)
+#   - a Button entity "{name} Reverse"  (for reversing direction)
 aok:
   id: aok_hub
   transmitter_id: tx
   remote_id: 0x8A3F71
   repeats: 8         # original remotes send 8-10 repeats; default is 8
+  blinds:
+    - name: "Bedroom"
+      channel: 1
+      travel_time: 25s    # roughly how long full open->close takes
 
-# One cover per blind. Channel is 1..16 (the component converts to the
-# 16-bit bitmask the motor expects).
-cover:
-  - platform: aok
-    name: "Blind 1 - Bedroom"
-    id: blind_1
-    channel: 1
-    travel_time: 25s    # roughly how long full open->close takes
+    - name: "Kitchen"
+      channel: 2
+      travel_time: 25s
 
-  - platform: aok
-    name: "Blind 2 - Kitchen"
-    id: blind_2
-    channel: 2
-    travel_time: 25s
+    - name: "Living Room A"
+      channel: 3
+      travel_time: 25s
 
-  - platform: aok
-    name: "Blind 3 - Living Room A"
-    id: blind_3
-    channel: 3
-    travel_time: 25s
+    - name: "Living Room B"
+      channel: 4
+      travel_time: 25s
 
-  - platform: aok
-    name: "Blind 4 - Living Room B"
-    id: blind_4
-    channel: 4
-    travel_time: 25s
+    - name: "Office"
+      channel: 5
+      travel_time: 25s
 
-  - platform: aok
-    name: "Blind 5 - Office"
-    id: blind_5
-    channel: 5
-    travel_time: 25s
+    - name: "Bathroom"
+      channel: 6
+      travel_time: 25s
 
-  - platform: aok
-    name: "Blind 6 - Bathroom"
-    id: blind_6
-    channel: 6
-    travel_time: 25s
-
-  - platform: aok
-    name: "Blind 7 - Hallway"
-    id: blind_7
-    channel: 7
-    travel_time: 25s
-
-# Pairing buttons. To pair a blind:
-#   1. Hold the PROG button on the motor head until the motor jogs.
-#   2. Within ~10 seconds, press the matching "Pair" button in HA.
-#   3. Motor jogs again to confirm pairing.
-button:
-  - platform: aok
-    name: "Pair Blind 1"
-    cover_id: blind_1
-    action: pair
-  - platform: aok
-    name: "Pair Blind 2"
-    cover_id: blind_2
-    action: pair
-  # ... add one per blind ...
-
-  # Reverse a blind's direction if up/down are swapped after pairing:
-  - platform: aok
-    name: "Reverse Blind 1"
-    cover_id: blind_1
-    action: change_direction
-    entity_category: config
+    - name: "Hallway"
+      channel: 7
+      travel_time: 25s

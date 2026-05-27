@@ -8,7 +8,7 @@ namespace esphome {
 namespace aok {
 
 enum AOKButtonAction {
-  AOK_BUTTON_PAIR = 0,
+  AOK_BUTTON_PROGRAM = 0,
   AOK_BUTTON_CHANGE_DIR = 1,
 };
 
@@ -20,9 +20,8 @@ class AOKButton : public button::Button, public Component {
  protected:
   void press_action() override {
     switch (action_) {
-      case AOK_BUTTON_PAIR:
+      case AOK_BUTTON_PROGRAM:
         cover_->send_program();
-        cover_->send_up();
         break;
       case AOK_BUTTON_CHANGE_DIR:
         cover_->send_change_direction();
@@ -31,7 +30,7 @@ class AOKButton : public button::Button, public Component {
   }
 
   AOKCover *cover_{nullptr};
-  AOKButtonAction action_{AOK_BUTTON_PAIR};
+  AOKButtonAction action_{AOK_BUTTON_PROGRAM};
 };
 
 }  // namespace aok

@@ -7,19 +7,6 @@ This works as a **virtual remote**: you make up a 24-bit remote ID, pair each
 motor to it, and ESPHome can then drive all your blinds without ever needing
 to clone or capture a physical remote.
 
-## Why this exists
-
-A-OK motors use a tri-state OOK protocol on 433.92 MHz that:
-
-- Sonoff RF Bridge stock firmware can't capture cleanly (Portisch sniffing
-  doesn't yield consistent codes for these remotes).
-- ESPHome's built-in protocols don't match (it's not Dooya, not RC-Switch).
-- Naive raw-replay tends to drift just enough on the ~270/565 µs pulse
-  widths that the motor's bit-slicer rejects the replay.
-
-Generating the waveform from scratch with the correct ID, channel bitmask,
-and checksum is much more reliable than capture-and-replay.
-
 ## Protocol
 
 Frame is 65 bits, MSB first:
@@ -57,8 +44,9 @@ works.
 2. See `blinds.yaml` for a complete example.
 3. Flash, then for each blind:
    - Hold the PROG button on the motor head until the motor jogs.
-   - Within 10 s, press the matching "Pair" button in HA.
+   - Within 10 s, press the matching "Program" button in HA.
    - Motor jogs to confirm.
+   - Use the cover's **Up** button to complete the pairing handshake.
 
 If a blind's UP/DOWN are reversed after pairing, press its "Reverse"
 button once.
@@ -73,24 +61,97 @@ button once.
 | `transmitter_id`| ID       | —       | ID of a `remote_transmitter` |
 | `remote_id`     | hex int  | —       | 24-bit virtual remote ID, e.g. `0x8A3F71` |
 | `repeats`       | int 1-20 | 8       | How many times to retransmit each frame |
+| `blinds`        | list     | —       | Compact blind definitions (see below) |
 
-### `cover:` platform `aok`
+### `blinds:` (compact syntax — recommended)
+
+Each entry under `blinds:` automatically creates three Home Assistant
+entities for that blind:
+
+- A **Cover** entity with the given name (open, close, stop, position).
+- A **Button** entity named `{name} Program` for sending the PROGRAM (0x53) command.
+- A **Button** entity named `{name} Reverse` for reversing the motor direction.
+
+To pair a motor: hold its PROG button until it jogs, press **Program** in HA,
+then press **Up** on the cover to confirm.
+
+```yaml
+aok:
+  transmitter_id: tx
+  remote_id: 0x8A3F71
+  blinds:
+    - name: "Bedroom"
+      channel: 1
+      travel_time: 25s
+
+    - name: "Kitchen"
+      channel: 2
+      travel_time: 25s
+```
+
+| Key           | Type        | Default | Description |
+|---------------|-------------|---------|-------------|
+| `name`        | string      | —       | HA entity name (also used as prefix for the Program/Reverse buttons) |
+| `channel`     | int 1-16    | —       | Channel number |
+| `travel_time` | duration    | 30 s    | Estimated full open-to-close time |
+| `after_delay` | duration    | 250 ms  | Delay before AFTER (0x24) packet |
+| `send_after`  | bool        | true    | Whether to send AFTER after UP/DOWN |
+| `inverted`    | bool        | false   | Swap open/close direction in software |
+
+All standard ESPHome entity options (`icon`, `internal`, `entity_category`,
+etc.) are also supported on each blind entry.
+
+### Advanced: separate `cover:` and `button:` platforms
+
+If you need finer control (e.g. different entity categories, custom button
+names), you can still declare covers and buttons individually:
+
+```yaml
+aok:
+  id: aok_hub
+  transmitter_id: tx
+  remote_id: 0x8A3F71
+
+cover:
+  - platform: aok
+    name: "Bedroom"
+    id: blind_bedroom
+    aok_id: aok_hub
+    channel: 1
+    travel_time: 25s
+
+button:
+  - platform: aok
+    name: "Program Bedroom"
+    cover_id: blind_bedroom
+    action: program
+
+  - platform: aok
+    name: "Reverse Bedroom"
+    cover_id: blind_bedroom
+    action: change_direction
+    entity_category: config
+```
+
+#### `cover:` platform `aok`
 
 | Key            | Type        | Default | Description |
 |----------------|-------------|---------|-------------|
 | `name`         | string      | —       | HA entity name |
-| `channel`      | int 1-16    | —       | Channel number (1 = bit 0, etc.) |
+| `aok_id`       | ID          | —       | ID of the `aok:` hub |
+| `channel`      | int 1-16    | —       | Channel number |
 | `travel_time`  | duration    | 30 s    | Estimated full open-to-close time |
 | `after_delay`  | duration    | 250 ms  | Delay before AFTER (0x24) packet |
 | `send_after`   | bool        | true    | Whether to send AFTER after UP/DOWN |
+| `inverted`     | bool        | false   | Swap open/close direction in software |
 
-### `button:` platform `aok`
+#### `button:` platform `aok`
 
-| Key       | Type                          | Description |
-|-----------|-------------------------------|-------------|
-| `name`    | string                        | HA entity name |
-| `cover_id`| ID                            | Which cover to act on |
-| `action`  | `pair` \| `change_direction`  | What to send |
+| Key        | Type                          | Description |
+|------------|-------------------------------|-------------|
+| `name`     | string                        | HA entity name |
+| `cover_id` | ID                            | Which cover to act on |
+| `action`   | `program` \| `change_direction` | What to send |
 
 ## Caveats
 
