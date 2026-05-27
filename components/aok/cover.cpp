@@ -42,22 +42,21 @@ void AOKCover::loop() {
     float elapsed = (now - this->operation_started_at_) / float(this->travel_time_);
     float delta = (this->last_operation_ == cover::COVER_OPERATION_OPENING) ? elapsed : -elapsed;
     float new_pos = clamp(this->position_at_op_start_ + delta, 0.0f, 1.0f);
-    if (new_pos != this->position) {
-      if (this->stop_pending_ &&
-          ((new_pos >= this->stop_position_ && this->last_operation_ == cover::COVER_OPERATION_OPENING) ||
-           (new_pos <= this->stop_position_ && this->last_operation_ == cover::COVER_OPERATION_CLOSING))) {
-        // Auto stop at target
-        this->send_stop();
-        this->stop_pending_ = false;
-      }
-      this->position = new_pos;
-      this->publish_state();
-    }
+    this->position = new_pos;
+    if (this->stop_pending_ &&
+        ((new_pos >= this->stop_position_ && this->last_operation_ == cover::COVER_OPERATION_OPENING) ||
+         (new_pos <= this->stop_position_ && this->last_operation_ == cover::COVER_OPERATION_CLOSING))) {
+      // Auto stop at target
+      this->send_stop();
+      this->stop_pending_ = false;
+    } else
     // Auto-stop the estimate when we hit a limit (motor stops itself there).
     if (new_pos == 0.0f || new_pos == 1.0f) {
       this->last_operation_ = cover::COVER_OPERATION_IDLE;
       this->current_operation = cover::COVER_OPERATION_IDLE;
       this->publish_state();
+    } else {
+       this->publish_state();
     }
   }
 
@@ -102,40 +101,40 @@ void AOKCover::control(const cover::CoverCall &call) {
 }
 
 void AOKCover::send_up() {
-  if (this->inverted_) {
-    this->hub_->send_command(this->channel_, AOK_CMD_DOWN);
-  } else {
-    this->hub_->send_command(this->channel_, AOK_CMD_UP);
-  }
   this->position_at_op_start_ = this->position;
   this->operation_started_at_ = millis();
   this->last_operation_ = cover::COVER_OPERATION_OPENING;
   this->current_operation = cover::COVER_OPERATION_OPENING;
   this->publish_state();
   this->schedule_after_();
+  if (this->inverted_) {
+    this->hub_->send_command(this->channel_, AOK_CMD_DOWN);
+  } else {
+    this->hub_->send_command(this->channel_, AOK_CMD_UP);
+  }
 }
 
 void AOKCover::send_down() {
-  if (this->inverted_) {
-    this->hub_->send_command(this->channel_, AOK_CMD_UP);
-  } else {
-    this->hub_->send_command(this->channel_, AOK_CMD_DOWN);
-  }
   this->position_at_op_start_ = this->position;
   this->operation_started_at_ = millis();
   this->last_operation_ = cover::COVER_OPERATION_CLOSING;
   this->current_operation = cover::COVER_OPERATION_CLOSING;
   this->publish_state();
   this->schedule_after_();
+  if (this->inverted_) {
+    this->hub_->send_command(this->channel_, AOK_CMD_UP);
+  } else {
+    this->hub_->send_command(this->channel_, AOK_CMD_DOWN);
+  }
 }
 
 void AOKCover::send_stop() {
-  this->hub_->send_command(this->channel_, AOK_CMD_STOP);
   this->last_operation_ = cover::COVER_OPERATION_IDLE;
   this->current_operation = cover::COVER_OPERATION_IDLE;
   // Cancel any pending AFTER since STOP resets motor state on its own.
   this->after_pending_ = false;
   this->publish_state();
+  this->hub_->send_command(this->channel_, AOK_CMD_STOP);
 }
 
 void AOKCover::schedule_after_() {
