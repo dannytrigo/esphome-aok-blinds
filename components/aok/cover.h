@@ -17,6 +17,7 @@ class AOKCover : public cover::Cover, public Component {
   void control(const cover::CoverCall &call) override;
 
   void set_hub(AOKHub *hub) { hub_ = hub; }
+  void add_stop_point(float pct) { stop_points_.push_back(pct / 100.0f); }
   void set_channel(uint16_t channel) { channel_ = channel; }
   void set_travel_time(uint32_t ms) { travel_time_ = ms; }
   void set_after_delay(uint32_t ms) { after_delay_ = ms; }
@@ -45,9 +46,13 @@ class AOKCover : public cover::Cover, public Component {
   bool after_pending_{false};
   uint32_t after_due_at_{0};
 
+  // Programmed stop points (0.0–1.0), sorted ascending.
+  std::vector<float> stop_points_;
+
   // Stop at target
   bool stop_pending_{false};
   float stop_position_{0.0f};
+  bool stop_is_point_{false};  // true = motor self-parks; false = send STOP
 
   // Position estimation (optional but nice to have).
   cover::CoverOperation last_operation_{cover::COVER_OPERATION_IDLE};
