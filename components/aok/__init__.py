@@ -43,6 +43,8 @@ CONF_INVERTED = "inverted"
 CONF_PROGRAM_BUTTON_ID = "program_button_id"
 CONF_DIR_BUTTON_ID = "dir_button_id"
 CONF_STOP_POINTS = "stop_points"
+CONF_RESUME_BUFFER = "resume_buffer"
+CONF_RESUME_FACTOR = "resume_factor"
 
 # ---------------------------------------------------------------------------
 # Schema for a single blind declared inside the `aok:` hub block.
@@ -61,6 +63,10 @@ BLIND_SCHEMA = cover_component.cover_schema(AOKCover).extend(
         cv.Optional(CONF_STOP_POINTS, default=[]): cv.ensure_list(
             cv.float_range(min=1, max=99)
         ),
+        # resume_buffer and resume_factor are optional per-blind overrides.
+        # If absent, the hub-level defaults are used.
+        cv.Optional(CONF_RESUME_BUFFER): cv.positive_time_period_milliseconds,
+        cv.Optional(CONF_RESUME_FACTOR): cv.float_range(min=0.0),
     }
 )
 
@@ -72,6 +78,9 @@ CONFIG_SCHEMA = cv.Schema(
         ),
         cv.Required(CONF_REMOTE_ID): cv.hex_int_range(min=0, max=0xFFFFFF),
         cv.Optional(CONF_REPEATS, default=8): cv.int_range(min=1, max=20),
+        # Hub-level defaults for stop-point resume timing.
+        cv.Optional(CONF_RESUME_BUFFER, default="3s"): cv.positive_time_period_milliseconds,
+        cv.Optional(CONF_RESUME_FACTOR, default=0.2): cv.float_range(min=0.0),
         # Optional compact syntax: each entry auto-creates a cover + two buttons.
         cv.Optional(CONF_BLINDS): cv.ensure_list(BLIND_SCHEMA),
     }
@@ -104,6 +113,11 @@ async def to_code(config):
         cg.add(cov.set_inverted(blind[CONF_INVERTED]))
         for sp in blind.get(CONF_STOP_POINTS, []):
             cg.add(cov.add_stop_point(sp))
+        # Resume timing: use per-blind override if present, else hub default.
+        resume_buffer = blind.get(CONF_RESUME_BUFFER, config[CONF_RESUME_BUFFER])
+        resume_factor = blind.get(CONF_RESUME_FACTOR, config[CONF_RESUME_FACTOR])
+        cg.add(cov.set_resume_buffer(int(resume_buffer.total_milliseconds)))
+        cg.add(cov.set_resume_factor(float(resume_factor)))
 
         # ------------------------------------------------------------------ #
         # Program button  ("{name} Program")                                  #

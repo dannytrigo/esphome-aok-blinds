@@ -24,7 +24,7 @@ void AOKCover::setup() {
 // Returns the next stop point strictly ahead of `pos` in the opening direction,
 // or -1 if none exists.
 static float next_stop_opening(const std::vector<float> &points, float pos) {
-  for (float sp : points) {           // sorted ascending
+  for (float sp : points) {  // sorted ascending
     if (sp > pos + 0.01f) return sp;
   }
   return -1.0f;
@@ -37,6 +37,20 @@ static float next_stop_closing(const std::vector<float> &points, float pos) {
     if (points[i] < pos - 0.01f) return points[i];
   }
   return -1.0f;
+}
+
+// Returns the nearest stop point to `target` within `tolerance`, or -1 if none.
+static float nearest_stop_point(const std::vector<float> &points, float target, float tolerance = 0.03f) {
+  float best = -1.0f;
+  float best_dist = tolerance;
+  for (float sp : points) {
+    float d = std::abs(sp - target);
+    if (d < best_dist) {
+      best_dist = d;
+      best = sp;
+    }
+  }
+  return best;
 }
 
 void AOKCover::dump_config() {
@@ -54,6 +68,8 @@ void AOKCover::dump_config() {
       pts += buf;
     }
     ESP_LOGCONFIG(TAG, "  Stop points:     %s", pts.c_str());
+    ESP_LOGCONFIG(TAG, "  Resume factor:   %.2f×", this->resume_factor_);
+    ESP_LOGCONFIG(TAG, "  Resume buffer:   %u ms", this->resume_buffer_ms_);
   }
 }
 
@@ -75,61 +91,148 @@ void AOKCover::loop() {
     float delta = (this->last_operation_ == cover::COVER_OPERATION_OPENING) ? elapsed : -elapsed;
     float new_pos = clamp(this->position_at_op_start_ + delta, 0.0f, 1.0f);
     this->position = new_pos;
+
     if (this->stop_pending_ &&
         ((new_pos >= this->stop_position_ && this->last_operation_ == cover::COVER_OPERATION_OPENING) ||
          (new_pos <= this->stop_position_ && this->last_operation_ == cover::COVER_OPERATION_CLOSING))) {
       this->stop_pending_ = false;
       if (this->stop_is_point_) {
-        ESP_LOGD(TAG, "Reached programmed stop point %.0f%% — snapping position, motor self-stops.",
-                 this->stop_position_ * 100.0f);
+        // Motor self-parks at its programmed preset.
         this->position = this->stop_position_;
         this->last_operation_ = cover::COVER_OPERATION_IDLE;
         this->current_operation = cover::COVER_OPERATION_IDLE;
         this->publish_state();
+        ESP_LOGD(TAG, "Reached stop point %.0f%%.", this->stop_position_ * 100.0f);
+
+        // If there is still further to go toward the final target, schedule a resume.
+        bool has_further = (this->final_target_ >= 0.0f) &&
+                           (std::abs(this->final_target_ - this->position) > 0.01f);
+        if (has_further) {
+          float travel_duration = now - this->operation_started_at_;
+          uint32_t resume_after_ms = (travel_duration * this->resume_factor_) + this->resume_buffer_ms_;
+          ESP_LOGD(TAG, "scheduling resume toward %.0f%% in %u ms (travel duration %.0f ms, factor %.1f, buffer %u ms).", 
+                   this->final_target_ * 100.0f, 
+                   resume_after_ms, 
+                   travel_duration,
+                   this->resume_factor_, 
+                   this->resume_buffer_ms_);
+
+          this->resume_pending_ = true;
+          this->resume_at_ = now + resume_after_ms;
+
+          this->resume_direction_ = (this->final_target_ > this->position)
+                                        ? cover::COVER_OPERATION_OPENING
+                                        : cover::COVER_OPERATION_CLOSING;
+        } else {
+          // Stop point IS the final target — clear it.
+          this->final_target_ = -1.0f;
+        }
       } else {
-        // Arbitrary intermediate target — send STOP to halt the motor.
+        // Arbitrary intermediate target — send STOP to physically halt the motor.
+        this->final_target_ = -1.0f;
         this->send_stop();
       }
-    } else
-    // Auto-stop the estimate when we hit a limit (motor stops itself there).
-    if (new_pos == 0.0f || new_pos == 1.0f) {
-      this->last_operation_ = cover::COVER_OPERATION_IDLE;
-      this->current_operation = cover::COVER_OPERATION_IDLE;
-      this->publish_state();
     } else {
-       this->publish_state();
+      // Auto-stop the estimate when we hit a travel-time limit.
+      if (new_pos == 0.0f || new_pos == 1.0f) {
+        this->final_target_ = -1.0f;
+        this->last_operation_ = cover::COVER_OPERATION_IDLE;
+        this->current_operation = cover::COVER_OPERATION_IDLE;
+      }
+      this->publish_state();
     }
   }
 
-  // 2) Send a queued AFTER packet when its delay elapses.
+  // 2) Fire a pending resume after the delay has elapsed.
+  if (this->resume_pending_ && now >= this->resume_at_) {
+    this->resume_pending_ = false;
+    ESP_LOGD(TAG, "Resuming toward %.0f%%.", this->final_target_ * 100.0f);
+    this->log_next_intercept_("Resuming");
+    if (this->resume_direction_ == cover::COVER_OPERATION_OPENING) {
+      this->send_up();
+    } else {
+      this->send_down();
+    }
+    // send_up/down sets the intercept at the next stop point; if the final
+    // target is before that stop point, override to a timed STOP.
+    if (this->stop_pending_) {
+      bool target_is_before_intercept =
+          (this->resume_direction_ == cover::COVER_OPERATION_OPENING && this->final_target_ < this->stop_position_) ||
+          (this->resume_direction_ == cover::COVER_OPERATION_CLOSING && this->final_target_ > this->stop_position_);
+      if (target_is_before_intercept) {
+        // Check if the target snaps to a stop point first.
+        this->apply_snapped_or_arbitrary_target(this->final_target_);
+      }
+    }
+  }
+
+  // 3) Send a queued AFTER packet when its delay elapses.
   if (this->after_pending_ && now >= this->after_due_at_) {
     this->after_pending_ = false;
     this->hub_->send_command(this->channel_, AOK_CMD_AFTER);
   }
 }
 
+void AOKCover::log_next_intercept_(const char *context) {
+  // Use last_operation_ so this is correct whether called from send_up/down
+  // directly or after a resume (where resume_direction_ would also be set,
+  // but last_operation_ is always the authoritative current direction).
+  auto dir = this->last_operation_;
+  const char *mode = this->stop_is_point_ ? "stop point" : "timed stop";
+
+  if (this->stop_pending_) {
+    ESP_LOGD(TAG, "%s: moving toward %.0f%% — next intercept at %.0f%% (%s).",
+             context,
+             this->final_target_ >= 0.0f ? this->final_target_ * 100.0f
+                                         : (dir == cover::COVER_OPERATION_OPENING ? 100.0f : 0.0f),
+             this->stop_position_ * 100.0f,
+             mode);
+  } else {
+    float implied_target = (dir == cover::COVER_OPERATION_OPENING) ? 100.0f : 0.0f;
+    ESP_LOGD(TAG, "%s: moving toward %.0f%% — no intercept, running to limit.",
+             context,
+             this->final_target_ >= 0.0f ? this->final_target_ * 100.0f : implied_target);
+  }
+}
+
+void AOKCover::apply_snapped_or_arbitrary_target(float target) {
+  float snapped = nearest_stop_point(this->stop_points_, target);
+  stop_pending_ = true;
+  if (snapped >= 0.0f) {
+    this->stop_position_ = snapped;
+    this->stop_is_point_ = true;
+  } else {
+    this->stop_position_ = target;
+    this->stop_is_point_ = false;
+  }
+}
+
 void AOKCover::control(const cover::CoverCall &call) {
+  // Any new command cancels a pending resume.
+  this->resume_pending_ = false;
   this->stop_pending_ = false;
+
   if (call.get_stop()) {
+    this->final_target_ = -1.0f;
     this->send_stop();
     return;
   }
+
   if (call.get_position().has_value()) {
     float target = *call.get_position();
+    this->final_target_ = target;
+
     if (target > this->position) {
       this->send_up();
-      // send_up() already sets the intercept at the next stop point.
-      // If the explicit target is *before* that stop point, override with a
-      // timed STOP (motor won't self-park at an arbitrary intermediate pos).
+      // send_up() already intercepts at the next stop point.
+      // If the explicit target is *before* that intercept, we need to override.
       if (this->stop_pending_ && target < this->stop_position_) {
-        this->stop_position_ = target;
-        this->stop_is_point_ = false;
+        this->apply_snapped_or_arbitrary_target(target);
       }
     } else if (target < this->position) {
       this->send_down();
       if (this->stop_pending_ && target > this->stop_position_) {
-        this->stop_position_ = target;
-        this->stop_is_point_ = false;
+        this->apply_snapped_or_arbitrary_target(target);
       }
     } else {
       if (target == 0.0f) {
@@ -141,55 +244,59 @@ void AOKCover::control(const cover::CoverCall &call) {
   }
 }
 
-void AOKCover::send_up() {
+void AOKCover::start_movement_(cover::CoverOperation direction, float next_stop, uint8_t cmd_normal, uint8_t cmd_inverted) {
   this->position_at_op_start_ = this->position;
   this->operation_started_at_ = millis();
-  this->last_operation_ = cover::COVER_OPERATION_OPENING;
-  this->current_operation = cover::COVER_OPERATION_OPENING;
-  // Intercept at the next programmed stop point in the opening direction.
-  float next = next_stop_opening(this->stop_points_, this->position);
-  if (next > 0.0f) {
-    this->stop_pending_ = true;
-    this->stop_position_ = next;
-    this->stop_is_point_ = true;
+  this->last_operation_ = direction;
+  this->current_operation = direction;
+
+  bool opening = (direction == cover::COVER_OPERATION_OPENING);
+
+  if (this->final_target_ >= 0.0f) {
+    bool target_at_or_beyond_stop = next_stop >= 0.0f &&
+        (opening ? this->final_target_ >= next_stop - 0.01f
+                 : this->final_target_ <= next_stop + 0.01f);
+    if (target_at_or_beyond_stop) {
+      this->stop_pending_ = true;
+      this->stop_position_ = next_stop;
+      this->stop_is_point_ = true;
+    } else {
+      this->apply_snapped_or_arbitrary_target(this->final_target_);
+    }
   } else {
-    this->stop_pending_ = false;
+    if (next_stop >= 0.0f) {
+      this->stop_pending_ = true;
+      this->stop_position_ = next_stop;
+      this->stop_is_point_ = true;
+    } else {
+      this->stop_pending_ = false;
+    }
   }
+
   this->publish_state();
   this->schedule_after_();
-  if (this->inverted_) {
-    this->hub_->send_command(this->channel_, AOK_CMD_DOWN);
-  } else {
-    this->hub_->send_command(this->channel_, AOK_CMD_UP);
-  }
+  this->log_next_intercept_("Starting");
+  this->hub_->send_command(this->channel_, this->inverted_ ? cmd_inverted : cmd_normal);
+}
+
+void AOKCover::send_up() {
+  start_movement_(cover::COVER_OPERATION_OPENING,
+                  next_stop_opening(this->stop_points_, this->position),
+                  AOK_CMD_UP, AOK_CMD_DOWN);
 }
 
 void AOKCover::send_down() {
-  this->position_at_op_start_ = this->position;
-  this->operation_started_at_ = millis();
-  this->last_operation_ = cover::COVER_OPERATION_CLOSING;
-  this->current_operation = cover::COVER_OPERATION_CLOSING;
-  // Intercept at the next programmed stop point in the closing direction.
-  float next = next_stop_closing(this->stop_points_, this->position);
-  if (next >= 0.0f) {
-    this->stop_pending_ = true;
-    this->stop_position_ = next;
-    this->stop_is_point_ = true;
-  } else {
-    this->stop_pending_ = false;
-  }
-  this->publish_state();
-  this->schedule_after_();
-  if (this->inverted_) {
-    this->hub_->send_command(this->channel_, AOK_CMD_UP);
-  } else {
-    this->hub_->send_command(this->channel_, AOK_CMD_DOWN);
-  }
+  start_movement_(cover::COVER_OPERATION_CLOSING,
+                  next_stop_closing(this->stop_points_, this->position),
+                  AOK_CMD_DOWN, AOK_CMD_UP);
 }
 
 void AOKCover::send_stop() {
   this->last_operation_ = cover::COVER_OPERATION_IDLE;
   this->current_operation = cover::COVER_OPERATION_IDLE;
+  this->stop_pending_ = false;
+  this->resume_pending_ = false;
+  this->final_target_ = -1.0f;
   // Cancel any pending AFTER since STOP resets motor state on its own.
   this->after_pending_ = false;
   this->publish_state();
