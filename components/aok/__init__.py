@@ -42,6 +42,7 @@ CONF_SEND_AFTER = "send_after"
 CONF_INVERTED = "inverted"
 CONF_PROGRAM_BUTTON_ID = "program_button_id"
 CONF_DIR_BUTTON_ID = "dir_button_id"
+CONF_STOP_POINTS = "stop_points"
 
 # ---------------------------------------------------------------------------
 # Schema for a single blind declared inside the `aok:` hub block.
@@ -57,6 +58,9 @@ BLIND_SCHEMA = cover_component.cover_schema(AOKCover).extend(
         cv.Optional(CONF_AFTER_DELAY, default="250ms"): cv.positive_time_period_milliseconds,
         cv.Optional(CONF_SEND_AFTER, default=True): cv.boolean,
         cv.Optional(CONF_INVERTED, default=False): cv.boolean,
+        cv.Optional(CONF_STOP_POINTS, default=[]): cv.ensure_list(
+            cv.float_range(min=1, max=99)
+        ),
     }
 )
 
@@ -98,6 +102,8 @@ async def to_code(config):
         cg.add(cov.set_after_delay(blind[CONF_AFTER_DELAY].total_milliseconds))
         cg.add(cov.set_send_after(blind[CONF_SEND_AFTER]))
         cg.add(cov.set_inverted(blind[CONF_INVERTED]))
+        for sp in blind.get(CONF_STOP_POINTS, []):
+            cg.add(cov.add_stop_point(sp))
 
         # ------------------------------------------------------------------ #
         # Program button  ("{name} Program")                                  #
